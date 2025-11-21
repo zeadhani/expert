@@ -381,6 +381,25 @@ defmodule Expert.Engine.CodeIntelligence.DefinitionTest do
       assert stdlib_uri =~ "lib/logger/lib/logger.ex"
       assert definition_line =~ "def level"
     end
+
+    test "find the definition of predicate function with ? in name", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesPredicateImport do
+          import Enum
+
+          def test_empty(list) do
+            empt|y?(list)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/enum.ex"
+      assert definition_line =~ "def empty?"
+    end
   end
 
   describe "definition/2 when making local call" do

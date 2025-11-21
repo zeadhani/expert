@@ -19,13 +19,14 @@ defmodule Engine.CodeIntelligence.Definition do
 
   This function searches for definitions in the following order:
   1. Project code and dependencies via the search index
-  2. Elixir standard library source files
+  2. Elixir/OTP library source files
   3. ElixirSense as a fallback for other cases
 
   Returns `{:ok, location}` for a single match, `{:ok, [locations]}` for multiple matches,
-  or `{:error, reason}` if the definition cannot be found.
+  `{:ok, nil}` when no definition is found, or `{:error, reason}` if an error occurs.
   """
-  @spec definition(Document.t(), Position.t()) :: {:ok, [Location.t()]} | {:error, String.t()}
+  @spec definition(Document.t(), Position.t()) ::
+          {:ok, Location.t()} | {:ok, [Location.t()]} | {:ok, nil} | {:error, String.t()}
   def definition(%Document{} = document, %Position{} = position) do
     with {:ok, _, analysis} <- Document.Store.fetch(document.uri, :analysis),
          {:ok, entity, _range} <- Entity.resolve(analysis, position) do
@@ -263,7 +264,8 @@ defmodule Engine.CodeIntelligence.Definition do
 
   defp find_definition_line(document, function, _arity) do
     content = Document.to_string(document)
-    pattern = ~r/^  (def|defp|defmacro|defmacrop)\s+#{function}\s*\(/m
+    function_name = function |> to_string() |> Regex.escape()
+    pattern = ~r/^\s*(def|defp|defmacro|defmacrop)\s+#{function_name}\s*\(/m
 
     content
     |> String.split("\n")
