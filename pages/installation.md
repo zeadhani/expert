@@ -337,6 +337,6 @@ chmod +x start_lexical.sh
 Replace `expert_linux_amd64` with the appropriate binary name for your system.
 
 Then, go to `Settings -> Extensions -> Lexical` and enter the folder path in the `Server: Release path override` section:
-```
+```shell
 /my/home/projects/expert/apps/expert/burrito_out
 ```
