@@ -248,6 +248,27 @@ defmodule Expert.Engine.CodeIntelligence.DefinitionTest do
     end
   end
 
+  describe "definition/2 when importing functions from standard library" do
+    test "find the definition of imported function from Enum", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesEnumImport do
+          import Enum
+
+          def test_map(list) do
+            ma|p(list, &(&1 * 2))
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/enum.ex"
+      assert definition_line =~ "map"
+    end
+  end
+
   describe "definition/2 when making local call" do
     test "find multiple locations when the module is defined in multiple places", %{
       project: project,
