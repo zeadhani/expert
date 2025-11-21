@@ -265,7 +265,121 @@ defmodule Expert.Engine.CodeIntelligence.DefinitionTest do
 
       assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
       assert stdlib_uri =~ "lib/elixir/lib/enum.ex"
-      assert definition_line =~ "map"
+      assert definition_line =~ "def map"
+    end
+
+    test "find the definition of imported function from String", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesStringImport do
+          import String
+
+          def test_upcase(text) do
+            upcas|e(text)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/string.ex"
+      assert definition_line =~ "def upcase"
+    end
+
+    test "find the definition of imported function from Map", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesMapImport do
+          import Map
+
+          def test_get(my_map) do
+            ge|t(my_map, :key)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/map.ex"
+      assert definition_line =~ "def get"
+    end
+
+    test "find the definition of imported function from List", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesListImport do
+          import List
+
+          def test_flatten(list) do
+            flatte|n(list)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/list.ex"
+      assert definition_line =~ "def flatten"
+    end
+
+    test "find the definition of imported function from Kernel", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesKernelImport do
+          import Kernel
+
+          def test_length(list) do
+            lengt|h(list)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/kernel.ex"
+      assert definition_line =~ "def length"
+    end
+
+    test "find the definition of imported function from IO", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesIOImport do
+          import IO
+
+          def test_puts(text) do
+            put|s(text)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/io.ex"
+      assert definition_line =~ "def puts"
+    end
+
+    test "find the definition of imported function from Logger", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesLoggerImport do
+          import Logger
+
+          def test_level do
+            leve|l()
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/logger/lib/logger.ex"
+      assert definition_line =~ "def level"
     end
   end
 
