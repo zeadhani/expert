@@ -82,17 +82,10 @@ defmodule Engine.CodeIntelligence.HeexComponent do
 
       String.contains?(component, ".") ->
         parts = String.split(component, ".")
-
-        case parts do
-          [_single] ->
-            {:error, :not_component}
-
-          multi_part ->
-            function_name = List.last(multi_part)
-            alias_parts = Enum.slice(multi_part, 0..-2//1)
-            alias_name = Enum.join(alias_parts, ".")
-            {:ok, {:aliased, alias_name, function_name}}
-        end
+        function_name = List.last(parts)
+        alias_parts = Enum.slice(parts, 0..-2//1)
+        alias_name = Enum.join(alias_parts, ".")
+        {:ok, {:aliased, alias_name, function_name}}
 
       true ->
         {:error, :not_component}

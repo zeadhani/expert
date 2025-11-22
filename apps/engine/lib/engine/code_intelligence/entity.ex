@@ -555,7 +555,7 @@ defmodule Engine.CodeIntelligence.Entity do
   end
 
   defp resolve_heex_aliased_component(analysis, position, alias_name, function_name) do
-    alias_segments = [String.to_atom(alias_name)]
+    alias_segments = alias_name |> String.split(".") |> Enum.map(&String.to_atom/1)
     function_atom = String.to_atom(function_name)
 
     case Engine.Analyzer.expand_alias(alias_segments, analysis, position) do
