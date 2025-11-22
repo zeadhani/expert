@@ -481,4 +481,52 @@ defmodule Expert.Engine.CodeIntelligence.DefinitionTest do
       entries
     end
   end
+
+  describe "definition/2 for HEEX components" do
+    setup [:with_referenced_file]
+
+    test "finds aliased component function in inline HEEX", %{
+      project: project,
+      uri: referenced_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesHeexComponent do
+          alias MyDefinition
+
+          def render(assigns) do
+            ~H"""
+            <MyDefinition.gree|t>Hello</MyDefinition.greet>
+            """
+          end
+        end
+      ]
+
+      assert {:ok, ^referenced_uri, definition_line} =
+               definition(project, subject_module, referenced_uri)
+
+      assert definition_line == ~S[  def «greet»(name) do]
+    end
+
+    test "finds imported component function in inline HEEX", %{
+      project: project,
+      uri: referenced_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesHeexComponent do
+          import MyDefinition
+
+          def render(assigns) do
+            ~H"""
+            <.gree|t>Hello</.greet>
+            """
+          end
+        end
+      ]
+
+      assert {:ok, ^referenced_uri, definition_line} =
+               definition(project, subject_module, referenced_uri)
+
+      assert definition_line == ~S[  def «greet(name)» do]
+    end
+  end
 end
