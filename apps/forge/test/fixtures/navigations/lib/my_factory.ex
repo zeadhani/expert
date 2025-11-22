@@ -1,4 +1,6 @@
 defmodule MyApp.Factory do
+  defstruct [:id]
+
   def create(attrs) when is_map(attrs) do
     struct(__MODULE__, attrs)
   end
