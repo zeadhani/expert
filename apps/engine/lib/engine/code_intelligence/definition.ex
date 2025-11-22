@@ -14,7 +14,19 @@ defmodule Engine.CodeIntelligence.Definition do
 
   require Logger
 
-  @spec definition(Document.t(), Position.t()) :: {:ok, [Location.t()]} | {:error, String.t()}
+  @doc """
+  Finds the definition location for the entity at the given position.
+
+  This function searches for definitions in the following order:
+  1. Project code and dependencies via the search index
+  2. Elixir/OTP library source files
+  3. ElixirSense as a fallback for other cases
+
+  Returns `{:ok, location}` for a single match, `{:ok, [locations]}` for multiple matches,
+  `{:ok, nil}` when no definition is found, or `{:error, reason}` if an error occurs.
+  """
+  @spec definition(Document.t(), Position.t()) ::
+          {:ok, Location.t()} | {:ok, [Location.t()]} | {:ok, nil} | {:error, String.t()}
   def definition(%Document{} = document, %Position{} = position) do
     with {:ok, _, analysis} <- Document.Store.fetch(document.uri, :analysis),
          {:ok, entity, _range} <- Entity.resolve(analysis, position) do
@@ -73,11 +85,43 @@ defmodule Engine.CodeIntelligence.Definition do
         location
       end
 
-    maybe_fallback_to_elixir_sense(resolved, locations, analysis, position)
+    case locations do
+      [] ->
+        case find_elixir_library_definition(module, function, arity) do
+          {:ok, location} -> {:ok, location}
+          :error -> maybe_fallback_to_elixir_sense(resolved, locations, analysis, position)
+        end
+
+      _ ->
+        maybe_fallback_to_elixir_sense(resolved, locations, analysis, position)
+    end
   end
 
   defp fetch_definition(_, %Analysis{} = analysis, %Position{} = position) do
     elixir_sense_definition(analysis, position)
+  end
+
+  defp maybe_fallback_to_elixir_sense(
+         {:call, module, function, arity} = resolved,
+         locations,
+         analysis,
+         position
+       ) do
+    case locations do
+      [] ->
+        Logger.info("No definition found for #{inspect(resolved)} with Indexer.")
+
+        case find_elixir_library_definition(module, function, arity) do
+          {:ok, location} -> {:ok, location}
+          :error -> elixir_sense_definition(analysis, position)
+        end
+
+      [location] ->
+        {:ok, location}
+
+      _ ->
+        {:ok, locations}
+    end
   end
 
   defp maybe_fallback_to_elixir_sense(resolved, locations, analysis, position) do
@@ -178,6 +222,62 @@ defmodule Engine.CodeIntelligence.Definition do
 
       _ ->
         []
+    end
+  end
+
+  defp find_elixir_library_definition(module, function, arity) do
+    with true <- elixir_library_module?(module),
+         beam_path when is_list(beam_path) <- :code.which(module),
+         source_path when is_binary(source_path) <- beam_to_source_path(beam_path),
+         uri <- Document.Path.ensure_uri(source_path),
+         {:ok, document} <- Document.Store.open_temporary(uri),
+         {:ok, line} <- find_definition_line(document, function, arity) do
+      {:ok, text} = Document.fetch_text_at(document, line)
+      range = to_precise_range(document, text, line, 1)
+      {:ok, Location.new(range, document)}
+    else
+      _ ->
+        :error
+    end
+  end
+
+  defp elixir_library_module?(module) when is_atom(module) do
+    with beam_path when is_list(beam_path) <- :code.which(module),
+         beam_string <- List.to_string(beam_path),
+         elixir_lib_dir_charlist <- :code.lib_dir(:elixir),
+         elixir_lib_dir <- elixir_lib_dir_charlist |> List.to_string() |> Path.dirname() do
+      String.starts_with?(beam_string, elixir_lib_dir)
+    else
+      _ -> false
+    end
+  end
+
+  defp beam_to_source_path(beam_path) when is_list(beam_path) do
+    beam_string = List.to_string(beam_path)
+    base_path = String.replace(beam_string, ~r/\/ebin\/[^\/]+\.beam$/, "")
+    module_name = Path.basename(beam_string, ".beam")
+    source_name = module_name |> String.replace_prefix("Elixir.", "") |> Macro.underscore()
+    Path.join([base_path, "lib", "#{source_name}.ex"])
+  rescue
+    _ -> nil
+  end
+
+  defp find_definition_line(document, function, _arity) do
+    content = Document.to_string(document)
+    function_name = function |> to_string() |> Regex.escape()
+    pattern = ~r/^\s*(def|defp|defmacro|defmacrop)\s+#{function_name}\s*\(/m
+
+    content
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.find_value(fn {line, line_number} ->
+      if Regex.match?(pattern, line) do
+        line_number
+      end
+    end)
+    |> case do
+      nil -> :error
+      line_number -> {:ok, line_number}
     end
   end
 end

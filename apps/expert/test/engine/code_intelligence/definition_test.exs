@@ -28,6 +28,21 @@ defmodule Expert.Engine.CodeIntelligence.DefinitionTest do
     %{uri: uri}
   end
 
+  defp with_factory_file(%{project: project}) do
+    uri =
+      project
+      |> file_path(Path.join("lib", "my_factory.ex"))
+      |> Document.Path.ensure_uri()
+
+    {:ok, _document} = Document.Store.open_temporary(uri)
+
+    on_exit(fn ->
+      :ok = Document.Store.close(uri)
+    end)
+
+    %{factory_uri: uri}
+  end
+
   defp subject_module_uri(project) do
     project
     |> file_path(Path.join("lib", "my_module.ex"))
@@ -245,6 +260,244 @@ defmodule Expert.Engine.CodeIntelligence.DefinitionTest do
                definition(project, subject_module, referenced_uri)
 
       assert definition_line == ~S[  def «hello_func_in_using» do]
+    end
+  end
+
+  describe "definition/2 when importing functions from standard library" do
+    test "find the definition of imported function from Enum", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesEnumImport do
+          import Enum
+
+          def test_map(list) do
+            ma|p(list, &(&1 * 2))
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/enum.ex"
+      assert definition_line =~ "def map"
+    end
+
+    test "find the definition of imported function from String", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesStringImport do
+          import String
+
+          def test_upcase(text) do
+            upcas|e(text)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/string.ex"
+      assert definition_line =~ "def upcase"
+    end
+
+    test "find the definition of imported function from Map", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesMapImport do
+          import Map
+
+          def test_get(my_map) do
+            ge|t(my_map, :key)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/map.ex"
+      assert definition_line =~ "def get"
+    end
+
+    test "find the definition of imported function from List", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesListImport do
+          import List
+
+          def test_flatten(list) do
+            flatte|n(list)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/list.ex"
+      assert definition_line =~ "def flatten"
+    end
+
+    test "find the definition of imported function from Kernel", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesKernelImport do
+          import Kernel
+
+          def test_length(list) do
+            lengt|h(list)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/kernel.ex"
+      assert definition_line =~ "def length"
+    end
+
+    test "find the definition of imported function from IO", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesIOImport do
+          import IO
+
+          def test_puts(text) do
+            put|s(text)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/io.ex"
+      assert definition_line =~ "def puts"
+    end
+
+    test "find the definition of imported function from Logger", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesLoggerImport do
+          import Logger
+
+          def test_level do
+            leve|l()
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/logger/lib/logger.ex"
+      assert definition_line =~ "def level"
+    end
+
+    test "find the definition of predicate function with ? in name", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q[
+        defmodule UsesPredicateImport do
+          import Enum
+
+          def test_empty(list) do
+            empt|y?(list)
+          end
+        end
+      ]
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/enum.ex"
+      assert definition_line =~ "def empty?"
+    end
+  end
+
+  describe "definition/2 when importing with only selector" do
+    test "find the definition of function imported with only from standard library", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q"""
+        defmodule UsesEnumImportWithOnly do
+          import Enum, only: [map: 2]
+
+          def test_map(list) do
+            ma|p(list, &(&1 * 2))
+          end
+        end
+      """
+
+      assert {:ok, stdlib_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert stdlib_uri =~ "lib/elixir/lib/enum.ex"
+      assert definition_line =~ "def map"
+    end
+
+    test "find the definition of function imported with only from deps", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q"""
+        defmodule UsesReqImport do
+          import Req, only: [get!: 1]
+
+          def fetch_data(url) do
+            ge|t!(url)
+          end
+        end
+      """
+
+      assert {:ok, req_uri, definition_line} = definition(project, subject_module, subject_uri)
+      assert req_uri =~ "deps/req/lib/req.ex"
+      assert definition_line =~ "def «get!»"
+    end
+  end
+
+  describe "definition/2 when importing with only selector from user codebase" do
+    setup [:with_factory_file]
+
+    test "find function imported with only selector", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q"""
+        defmodule MyApp.Things do
+          import MyApp.Factory, only: [create: 1]
+
+          def create_thing(attrs) do
+            creat|e(attrs)
+          end
+        end
+      """
+
+      {:ok, found_uri, definition_line} = definition(project, subject_module, subject_uri)
+
+      assert definition_line == ~S[  def create(attrs) «when» is_map(attrs) do]
+      assert found_uri =~ "navigations/lib/my_factory.ex"
+    end
+
+    test "find function when multiple functions imported with only", %{
+      project: project,
+      subject_uri: subject_uri
+    } do
+      subject_module = ~q"""
+        defmodule MyApp.Things do
+          import MyApp.Factory, only: [create: 1, build: 1, insert: 1]
+
+          def build_thing(attrs) do
+            buil|d(attrs)
+          end
+        end
+      """
+
+      {:ok, found_uri, definition_line} = definition(project, subject_module, subject_uri)
+
+      assert definition_line == ~S[  def build(attrs) «when» is_map(attrs) do]
+      assert found_uri =~ "navigations/lib/my_factory.ex"
     end
   end
 
