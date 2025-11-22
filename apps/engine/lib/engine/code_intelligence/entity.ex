@@ -40,7 +40,7 @@ defmodule Engine.CodeIntelligence.Entity do
       {:ok, resolved, to_range(analysis.document, begin_pos, end_pos)}
     else
       :error -> {:error, :not_found}
-      {:error, :surround_context} -> maybe_local_capture_func(analysis, position)
+      {:error, :surround_context} -> maybe_heex_component(analysis, position)
       {:error, _} = error -> error
     end
   end
@@ -511,6 +511,68 @@ defmodule Engine.CodeIntelligence.Entity do
       {:ok, module} -> module
       _ -> nil
     end
+  end
+
+  defp maybe_heex_component(analysis, position) do
+    case Engine.CodeIntelligence.HeexComponent.component_at(
+           analysis.document,
+           {position.line, position.character}
+         ) do
+      {:ok, {:imported, function_name}} ->
+        resolve_heex_imported_component(analysis, position, function_name)
+
+      {:ok, {:aliased, alias_name, function_name}} ->
+        resolve_heex_aliased_component(analysis, position, alias_name, function_name)
+
+      {:error, :not_component} ->
+        maybe_local_capture_func(analysis, position)
+    end
+  end
+
+  defp resolve_heex_imported_component(analysis, position, function_name) do
+    range = simple_range(analysis.document, position, String.length(function_name))
+    search_index_for_component(function_name, range)
+  end
+
+  defp search_index_for_component(function_name, range) do
+    function_atom = String.to_atom(function_name)
+
+    with {:ok, entries} <-
+           Engine.Search.Store.exact(:_, type: {:function, :public}, subtype: :definition),
+         [entry | _] <-
+           Enum.filter(entries, fn entry ->
+             String.ends_with?(entry.subject, ".#{function_name}/1")
+           end) do
+      [mfa, arity_str] = String.split(entry.subject, "/")
+      parts = String.split(mfa, ".")
+      {_function_str, module_parts} = List.pop_at(parts, -1)
+      module_atom = Module.concat(module_parts)
+      arity = String.to_integer(arity_str)
+      {:ok, {:call, module_atom, function_atom, arity}, range}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp resolve_heex_aliased_component(analysis, position, alias_name, function_name) do
+    alias_segments = [String.to_atom(alias_name)]
+    function_atom = String.to_atom(function_name)
+
+    case Engine.Analyzer.expand_alias(alias_segments, analysis, position) do
+      {:ok, module} ->
+        range = simple_range(analysis.document, position, String.length(function_name))
+        {:ok, {:call, module, function_atom, 1}, range}
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp simple_range(document, position, length) do
+    Range.new(
+      position,
+      Position.new(document, position.line, position.character + length)
+    )
   end
 
   defp maybe_local_capture_func(analysis, position) do
